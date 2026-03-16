@@ -50,17 +50,15 @@ jobs:
         uses: azure/login@v1
         with:
           creds: ${{ secrets.SERVICEPRINCIPAL }}
-      - name: extract acr password
-        uses: azure/cli@v2
-        id: extract-acr-password
-        with:
-          inlineScript: echo "acrPassword=$(az acr credential show -n ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP_NAME }}${{ secrets.ENVIRONMENT }} --query "passwords[0].value" -o tsv)" >> $GITHUB_OUTPUT
-      - name: azure container registry login
-        uses: azure/docker-login@v1
-        with:
-          login-server: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io
-          username: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}
-          password: ${{ steps.extract-acr-password.outputs.acrPassword }}
+      - name: extract sp creds
+        run: |
+          clientId=$(echo '${{ secrets.SERVICEPRINCIPAL }}' | jq -r .clientId)
+          clientSecret=$(echo '${{ secrets.SERVICEPRINCIPAL }}' | jq -r .clientSecret)
+          echo "clientId=$clientId" >> $GITHUB_OUTPUT
+          echo "clientSecret=$clientSecret" >> $GITHUB_OUTPUT
+        id: extract-sp
+      - name: docker login
+        run: echo ${{ steps.extract-sp.outputs.clientSecret }} | docker login ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io -u ${{ steps.extract-sp.outputs.clientId }} --password-stdin
       - name: docker build
         run: docker build src -f ./src/ContosoTraders.Api.Carts/Dockerfile -t ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io/${{ env.CARTS_ACR_REPOSITORY_NAME }}:latest -t ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io/${{ env.CARTS_ACR_REPOSITORY_NAME }}:${{ github.sha }}
       - name: docker push (to acr)
@@ -84,17 +82,15 @@ jobs:
       - name: install helm
         uses: Azure/setup-helm@v3
         id: install-helm
-      - name: extract acr password
-        uses: azure/cli@v2
-        id: extract-acr-password
-        with:
-          inlineScript: echo "acrPassword=$(az acr credential show -n ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }} -g ${{ env.RESOURCE_GROUP_NAME }}${{ secrets.ENVIRONMENT }} --query "passwords[0].value" -o tsv)" >> $GITHUB_OUTPUT
-      - name: azure container registry login
-        uses: azure/docker-login@v1
-        with:
-          login-server: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io
-          username: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}
-          password: ${{ steps.extract-acr-password.outputs.acrPassword }}
+      - name: extract sp creds
+        run: |
+          clientId=$(echo '${{ secrets.SERVICEPRINCIPAL }}' | jq -r .clientId)
+          clientSecret=$(echo '${{ secrets.SERVICEPRINCIPAL }}' | jq -r .clientSecret)
+          echo "clientId=$clientId" >> $GITHUB_OUTPUT
+          echo "clientSecret=$clientSecret" >> $GITHUB_OUTPUT
+        id: extract-sp
+      - name: docker login
+        run: echo ${{ steps.extract-sp.outputs.clientSecret }} | docker login ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io -u ${{ steps.extract-sp.outputs.clientId }} --password-stdin
       - name: docker build
         run: docker build src -f ./src/ContosoTraders.Api.Products/Dockerfile -t ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io/${{ env.PRODUCTS_ACR_REPOSITORY_NAME }}:latest -t ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io/${{ env.PRODUCTS_ACR_REPOSITORY_NAME }}:${{ github.sha }}
       - name: docker push (to acr)
@@ -111,8 +107,8 @@ jobs:
         with:
           secret-name: ${{ env.AKS_SECRET_NAME_ACR_PASSWORD }}
           container-registry-url: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}.azurecr.io
-          container-registry-username: ${{ env.ACR_NAME }}${{ secrets.ENVIRONMENT }}
-          container-registry-password: ${{ steps.extract-acr-password.outputs.acrPassword }}
+          container-registry-username: ${{ steps.extract-sp.outputs.clientId }}
+          container-registry-password: ${{ steps.extract-sp.outputs.clientSecret }}
       - name: get managedIdentityClientId
         uses: azure/cli@v2
         id: get-managedIdentityClientId
